@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <string>
+#include <map>
 #include <vector>
 #include <fstream>
 #include <unistd.h>
@@ -13,6 +14,7 @@ enum InstructionIndex {
 	FLAGS,
 	LIBS,
 	PKGS,
+	NAME,
 	INCLUDE,
 	INSTRUCTION_COUNT
 };
@@ -32,98 +34,38 @@ int main(){
 	file.close();
 
 	int filesIndex = -1;
-	int projectIndex = -1;
+	std::map<std::string, int> projectIndices;
 
 	if(lines[0][0] != '['){
 		std::cout << ".howtobuild meant to start with \'[\' but started with \'" << lines[0][0] << "\'" << std::endl;
 		return 1;
 	}
 	else{
-		if(lines[0][1] == 'F'){
-			filesIndex = 0;
-		}
-		else{
-			projectIndex = 0;
-		}
-
-		for(int i = 1; i < lines.size(); i++){
+		for(int i = 0; i < lines.size(); i++){
 			if(lines[i][0] == '['){
-				filesIndex = filesIndex == -1 ? i : filesIndex;
-				projectIndex = projectIndex == -1 ? i : projectIndex;
-				break;
-			}
-		}
-	}
-
-	// -- BUILD HANDLING --
-
-	if(projectIndex == -1){
-		std::cout << "No project instructions found" << std::endl;
-	}
-
-	// four options, all concatted later
-	std::string BUILD_INSTRUCTIONS[INSTRUCTION_COUNT];
-
-	for(int i = projectIndex+1; i < (projectIndex < filesIndex ? filesIndex : lines.size()); i++){
-		if(lines[i][0] == '$'){
-			std::string ident;
-			std::string value;
-			bool flip = false;
-			for(int j = 1; j < lines[i].size(); j++){
-				if(lines[i][j] == ':'){ flip = true; continue; }
-				if(lines[i][j] == ' '){ continue; }
-				if(!flip){
-					ident.push_back(lines[i][j]);
+				std::string tag = lines[i].substr(1);
+				tag.pop_back();
+				if(tag == "Files"){
+					filesIndex = i;
 				}
 				else{
-					if(lines[i][j] == ','){
-						value.push_back(' ');
+					if(projectIndices.contains(tag)){
+						std::cout << "Repeat tag \"" << tag << "\" found" << std::endl;
+						continue;
 					}
-					else{
-						value.push_back(lines[i][j]);
-					}
+					projectIndices[tag] = i;
 				}
 			}
-
-			if(ident == "BUILD"){
-				BUILD_INSTRUCTIONS[BUILD] = value;
-			}
-			else if(ident == "FLAGS"){
-				BUILD_INSTRUCTIONS[FLAGS] = value;
-			}
-			else if(ident == "LIBS"){
-				BUILD_INSTRUCTIONS[LIBS] = value;
-			}
-			else if(ident == "SRCS"){
-				BUILD_INSTRUCTIONS[SRCS] = value;
-			}
-			else if(ident == "PKGS"){
-				BUILD_INSTRUCTIONS[PKGS] = value;
-			}
-			else if(ident == "INCLUDE"){
-				BUILD_INSTRUCTIONS[INCLUDE] = value;
-			}
 		}
-	}
-
-	std::string name;
-	name = lines[projectIndex].substr(1);
-	name.pop_back();
-
-	if(BUILD_INSTRUCTIONS[SRCS].empty() || BUILD_INSTRUCTIONS[BUILD].empty()){
-		std::cout << "Improper BUILD_INSTRUCTIONS recieved" << std::endl;
-		return 1;
-	}
-
-	std::string finalBuild = BUILD_INSTRUCTIONS[BUILD] + ' ' + BUILD_INSTRUCTIONS[SRCS] + " -o \"" + name + "\" " + BUILD_INSTRUCTIONS[FLAGS] + ' ' + BUILD_INSTRUCTIONS[INCLUDE] + ' ' + BUILD_INSTRUCTIONS[LIBS];
-	if(!BUILD_INSTRUCTIONS[PKGS].empty()){
-		finalBuild = finalBuild + " $(pkg-config " + BUILD_INSTRUCTIONS[PKGS] + " --cflags --libs)";
 	}
 
 	// -- FILE HANDLING --
 	std::vector<std::string> filepaths;
 
-	for(int i = filesIndex+1; i < (filesIndex < projectIndex ? projectIndex : lines.size()); i++){
+	for(int i = filesIndex+1; i < lines.size(); i++){
+		if(lines[i][0] == '['){
+			break;
+		}
 		filepaths.push_back(lines[i]);
 		if(!std::filesystem::exists(lines[i])){
 			if(lines[i].back() == '/'){
@@ -145,7 +87,7 @@ int main(){
 		for(int i = 0; i < filepaths.size(); i++){
 			if(relative.generic_string() == filepaths[i]
 				|| relative.generic_string()[0] == '.'
-				|| relative.generic_string() == "remy"){
+				|| projectIndices.contains(relative.generic_string())){
 				exists = true;
 			}
 		}
@@ -188,9 +130,84 @@ int main(){
 		}
 	}
 
-	std::cout << "Build? [Y/n]: ";
+	// -- BUILD HANDLING --
+
+	if(projectIndices.size() == 0){
+		std::cout << "No project instructions found" << std::endl;
+		return 1;
+	}
+
+	std::cout << "Found " << projectIndices.size() << " build targets:\n";
+
+	std::vector<std::vector<std::string>> BUILD_INSTRUCTIONS;
+	BUILD_INSTRUCTIONS.resize(projectIndices.size());
+	int index = 0;
+	for(auto const& [key, val] : projectIndices){
+		std::cout << "[" << index << "] " << key << std::endl;
+		BUILD_INSTRUCTIONS[index].resize(INSTRUCTION_COUNT);
+		BUILD_INSTRUCTIONS[index][NAME] = key.c_str();
+		for(int i = val+1; i < lines.size(); i++){
+			if(lines[i][0] == '['){
+				break;
+			}
+			else if(lines[i][0] == '$'){
+				int end = lines[i].find(':');
+				std::string ident = lines[i].substr(1, end-1);
+				if(ident == "BUILD"){
+					BUILD_INSTRUCTIONS[index][BUILD] = lines[i].substr(end+1);
+				}
+				else if(ident == "SRCS"){
+					BUILD_INSTRUCTIONS[index][SRCS] = lines[i].substr(end+1);
+				}
+				else if(ident == "FLAGS"){
+					BUILD_INSTRUCTIONS[index][FLAGS] = lines[i].substr(end+1);
+				}
+				else if(ident == "LIBS"){
+					BUILD_INSTRUCTIONS[index][LIBS] = lines[i].substr(end+1);
+				}
+				else if(ident == "PKGS"){
+					BUILD_INSTRUCTIONS[index][PKGS] = lines[i].substr(end+1);
+				}
+				else if(ident == "NAME"){
+					if(lines[i][end+1] == ' '){
+						BUILD_INSTRUCTIONS[index][NAME] = lines[i].substr(end+2)
+					}
+					else{
+						BUILD_INSTRUCTIONS[index][NAME] = lines[i].substr(end+1);
+					}
+				}
+			}
+		}
+		index++;
+	}
+
+	int selection = -1;
 	c.clear();
-	std::getline(std::cin, c);
+	while(selection == -1){
+		std::cout << "Which build target would you like?[0-" << projectIndices.size()-1 << "]: ";
+		std::getline(std::cin, c);
+		try {
+			if(c.empty() || c == "q"){
+				selection = -2;
+			}
+			std::stoi(c);
+		} catch(...){
+			continue;
+		}
+		if(std::stoi(c) >= 0 && std::stoi(c) < projectIndices.size()){
+			selection = std::stoi(c);
+		}
+	}
+
+	if(selection == -2){
+		return 0;
+	}
+
+	std::string finalBuild = BUILD_INSTRUCTIONS[selection][BUILD] + ' ' + BUILD_INSTRUCTIONS[selection][SRCS] + " -o \"" + BUILD_INSTRUCTIONS[selection][NAME] + "\" " + BUILD_INSTRUCTIONS[selection][FLAGS] + ' ' + BUILD_INSTRUCTIONS[selection][INCLUDE] + ' ' + BUILD_INSTRUCTIONS[selection][LIBS];
+	if(!BUILD_INSTRUCTIONS[selection][PKGS].empty()){
+		finalBuild = finalBuild + " $(pkg-config " + BUILD_INSTRUCTIONS[selection][PKGS] + " --cflags --libs)";
+	}
+
 	if(c != "n"){
 		std::cout << "Running \"" << finalBuild << "\"" << std::endl;
 		std::system(finalBuild.c_str());
