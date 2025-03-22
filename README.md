@@ -9,3 +9,22 @@ Build with `g++ -std=c++20 *.cpp -o remy` and put the binary wherever
     - [x] Manage Files and Create Needed
     - [x] Conditional Build Options
         - Should have easy to use flags
+
+## Example
+
+```
+[remy]
+$BUILD: g++
+$FLAGS: -std=c++20
+$SRCS: *.cpp
+
+[remy-debug]
+$BUILD: g++
+$FLAGS: -std=c++20 -g
+$SRCS: *.cpp
+
+[Files]
+main.cpp
+README.md
+LICENSE
+```
