@@ -35,9 +35,10 @@ int main(){
 
 	int filesIndex = -1;
 	std::map<std::string, int> projectIndices;
+	std::string GLOBAL_INSTRUCTIONS[INSTRUCTION_COUNT];
 
-	if(lines[0][0] != '['){
-		std::cout << ".howtobuild meant to start with \'[\' but started with \'" << lines[0][0] << "\'" << std::endl;
+	if(lines[0][0] != '[' && lines[0][0] != '%'){
+		std::cout << ".howtobuild meant to start with \'[\' or \'%\' but started with \'" << lines[0][0] << "\'" << std::endl;
 		return 1;
 	}
 	else{
@@ -54,6 +55,34 @@ int main(){
 						continue;
 					}
 					projectIndices[tag] = i;
+				}
+			}
+			else if(lines[i][0] == '%'){
+				int end = lines[i].find(':');
+				std::string ident = lines[i].substr(1, end-1);
+
+				if(ident == "BUILD"){
+					GLOBAL_INSTRUCTIONS[BUILD] = lines[i].substr(end+1);
+				}
+				else if(ident == "SRCS"){
+					GLOBAL_INSTRUCTIONS[SRCS] = lines[i].substr(end+1);
+				}
+				else if(ident == "FLAGS"){
+					GLOBAL_INSTRUCTIONS[FLAGS] = lines[i].substr(end+1);
+				}
+				else if(ident == "LIBS"){
+					GLOBAL_INSTRUCTIONS[LIBS] = lines[i].substr(end+1);
+				}
+				else if(ident == "PKGS"){
+					GLOBAL_INSTRUCTIONS[PKGS] = lines[i].substr(end+1);
+				}
+				else if(ident == "NAME"){
+					if(lines[i][end+1] == ' '){
+						GLOBAL_INSTRUCTIONS[NAME] = lines[i].substr(end+2);
+					}
+					else{
+						GLOBAL_INSTRUCTIONS[NAME] = lines[i].substr(end+1);
+					}
 				}
 			}
 		}
@@ -206,9 +235,27 @@ int main(){
 		return 0;
 	}
 
-	std::string finalBuild = BUILD_INSTRUCTIONS[selection][BUILD] + ' ' + BUILD_INSTRUCTIONS[selection][SRCS] + " -o \"" + BUILD_INSTRUCTIONS[selection][NAME] + "\" " + BUILD_INSTRUCTIONS[selection][FLAGS] + ' ' + BUILD_INSTRUCTIONS[selection][INCLUDE] + ' ' + BUILD_INSTRUCTIONS[selection][LIBS];
-	if(!BUILD_INSTRUCTIONS[selection][PKGS].empty()){
-		finalBuild = finalBuild + " $(pkg-config " + BUILD_INSTRUCTIONS[selection][PKGS] + " --cflags --libs)";
+	std::string FINAL_INSTRUCTIONS[INSTRUCTION_COUNT];
+	FINAL_INSTRUCTIONS[BUILD] = BUILD_INSTRUCTIONS[selection][BUILD].empty() ? GLOBAL_INSTRUCTIONS[BUILD] : BUILD_INSTRUCTIONS[selection][BUILD];
+	FINAL_INSTRUCTIONS[SRCS] = BUILD_INSTRUCTIONS[selection][SRCS].empty() ? GLOBAL_INSTRUCTIONS[SRCS] : BUILD_INSTRUCTIONS[selection][SRCS];
+	FINAL_INSTRUCTIONS[NAME] = BUILD_INSTRUCTIONS[selection][NAME].empty() ? GLOBAL_INSTRUCTIONS[NAME] : BUILD_INSTRUCTIONS[selection][NAME];
+	FINAL_INSTRUCTIONS[FLAGS] = BUILD_INSTRUCTIONS[selection][FLAGS].empty() ? GLOBAL_INSTRUCTIONS[FLAGS] : BUILD_INSTRUCTIONS[selection][FLAGS];
+	FINAL_INSTRUCTIONS[INCLUDE] = BUILD_INSTRUCTIONS[selection][INCLUDE].empty() ? GLOBAL_INSTRUCTIONS[INCLUDE] : BUILD_INSTRUCTIONS[selection][INCLUDE];
+	FINAL_INSTRUCTIONS[LIBS] = BUILD_INSTRUCTIONS[selection][LIBS].empty() ? GLOBAL_INSTRUCTIONS[LIBS] : BUILD_INSTRUCTIONS[selection][LIBS];
+	FINAL_INSTRUCTIONS[PKGS] = BUILD_INSTRUCTIONS[selection][PKGS].empty() ? GLOBAL_INSTRUCTIONS[PKGS] : BUILD_INSTRUCTIONS[selection][PKGS];
+
+	if(FINAL_INSTRUCTIONS[BUILD].empty() || FINAL_INSTRUCTIONS[SRCS].empty() || FINAL_INSTRUCTIONS[NAME].empty()){
+		std::cout << "Attempted build target " << selection << " but failed to find proper instructions" << std::endl;
+		return 1;
+	}
+
+//	std::string finalBuild = BUILD_INSTRUCTIONS[selection][BUILD] + ' ' + BUILD_INSTRUCTIONS[selection][SRCS] + " -o \"" + BUILD_INSTRUCTIONS[selection][NAME] + "\" " + BUILD_INSTRUCTIONS[selection][FLAGS] + ' ' + BUILD_INSTRUCTIONS[selection][INCLUDE] + ' ' + BUILD_INSTRUCTIONS[selection][LIBS];
+//	if(!BUILD_INSTRUCTIONS[selection][PKGS].empty()){
+//		finalBuild = finalBuild + " $(pkg-config " + BUILD_INSTRUCTIONS[selection][PKGS] + " --cflags --libs)";
+//	}
+	std::string finalBuild = FINAL_INSTRUCTIONS[BUILD] + ' ' + FINAL_INSTRUCTIONS[SRCS] + " -o \"" + FINAL_INSTRUCTIONS[NAME] + "\" " + FINAL_INSTRUCTIONS[FLAGS] + ' ' + FINAL_INSTRUCTIONS[INCLUDE] + ' ' + FINAL_INSTRUCTIONS[LIBS];
+	if(!FINAL_INSTRUCTIONS[PKGS].empty()){
+		finalBuild = finalBuild + " $(pkg-config " + FINAL_INSTRUCTIONS[PKGS] + " --cflags --libs)";
 	}
 
 	if(c != "n"){
