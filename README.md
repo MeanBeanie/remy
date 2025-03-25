@@ -13,18 +13,11 @@ Build with `g++ -std=c++20 *.cpp -o remy` and put the binary wherever
 ## Example
 
 ```
-[remy]
 $BUILD: g++
 $FLAGS: -std=c++20
 $SRCS: *.cpp
 
+[remy]
 [remy-debug]
-$BUILD: g++
-$FLAGS: -std=c++20 -g
-$SRCS: *.cpp
-
-[Files]
-main.cpp
-README.md
-LICENSE
+$FLAGS: -g
 ```
